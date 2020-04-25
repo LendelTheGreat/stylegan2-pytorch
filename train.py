@@ -271,19 +271,29 @@ def train(args, loader, generator, discriminator, g_optim, d_optim, g_ema, devic
                     }
                 )
 
-            if i % 100 == 0:
+            if i % args.save_sample_every == 0:
                 with torch.no_grad():
                     g_ema.eval()
                     sample, _ = g_ema([sample_z])
                     utils.save_image(
                         sample,
-                        f'sample/{str(i).zfill(6)}.png',
+                        f'sample_{args.name}/g_ema_{str(i).zfill(6)}.png',
+                        nrow=int(args.n_sample ** 0.5),
+                        normalize=True,
+                        range=(-1, 1),
+                    )
+                    
+                    g_module.eval()
+                    sample, _ = g_module([sample_z])
+                    utils.save_image(
+                        sample,
+                        f'sample_{args.name}/g_module_{str(i).zfill(6)}.png',
                         nrow=int(args.n_sample ** 0.5),
                         normalize=True,
                         range=(-1, 1),
                     )
 
-            if i % 10000 == 0:
+            if i % args.save_ckpt_every == 0:
                 torch.save(
                     {
                         'g': g_module.state_dict(),
@@ -292,34 +302,15 @@ def train(args, loader, generator, discriminator, g_optim, d_optim, g_ema, devic
                         'g_optim': g_optim.state_dict(),
                         'd_optim': d_optim.state_dict(),
                     },
-                    f'checkpoint/{str(i).zfill(6)}.pt',
+                    f'checkpoint_{args.name}/{str(i).zfill(6)}.pt',
                 )
 
-
-if __name__ == '__main__':
-    device = 'cuda'
-
-    parser = argparse.ArgumentParser()
-
-    parser.add_argument('path', type=str)
-    parser.add_argument('--iter', type=int, default=800000)
-    parser.add_argument('--batch', type=int, default=16)
-    parser.add_argument('--n_sample', type=int, default=64)
-    parser.add_argument('--size', type=int, default=256)
-    parser.add_argument('--r1', type=float, default=10)
-    parser.add_argument('--path_regularize', type=float, default=2)
-    parser.add_argument('--path_batch_shrink', type=int, default=2)
-    parser.add_argument('--d_reg_every', type=int, default=16)
-    parser.add_argument('--g_reg_every', type=int, default=4)
-    parser.add_argument('--mixing', type=float, default=0.9)
-    parser.add_argument('--ckpt', type=str, default=None)
-    parser.add_argument('--lr', type=float, default=0.002)
-    parser.add_argument('--channel_multiplier', type=int, default=2)
-    parser.add_argument('--wandb', action='store_true')
-    parser.add_argument('--local_rank', type=int, default=0)
-
-    args = parser.parse_args()
-
+                
+def setup_and_run(device, args):
+    
+    os.makedirs(f'sample_{args.name}', exist_ok=True)
+    os.makedirs(f'checkpoint_{args.name}', exist_ok=True)
+    
     n_gpu = int(os.environ['WORLD_SIZE']) if 'WORLD_SIZE' in os.environ else 1
     args.distributed = n_gpu > 1
 
@@ -371,9 +362,9 @@ if __name__ == '__main__':
         except ValueError:
             pass
             
-        generator.load_state_dict(ckpt['g'])
-        discriminator.load_state_dict(ckpt['d'])
-        g_ema.load_state_dict(ckpt['g_ema'])
+        generator.load_state_dict(ckpt['g'], strict=False)
+        discriminator.load_state_dict(ckpt['d'], strict=False)
+        g_ema.load_state_dict(ckpt['g_ema'], strict=False)
 
         g_optim.load_state_dict(ckpt['g_optim'])
         d_optim.load_state_dict(ckpt['d_optim'])
@@ -414,3 +405,36 @@ if __name__ == '__main__':
         wandb.init(project='stylegan 2')
 
     train(args, loader, generator, discriminator, g_optim, d_optim, g_ema, device)
+
+if __name__ == '__main__':
+    device = 'cuda'
+
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument('path', type=str)
+    parser.add_argument('--iter', type=int, default=800000)
+    parser.add_argument('--batch', type=int, default=16)
+    parser.add_argument('--n_sample', type=int, default=64)
+    parser.add_argument('--size', type=int, default=256)
+    parser.add_argument('--r1', type=float, default=10)
+    parser.add_argument('--path_regularize', type=float, default=2)
+    parser.add_argument('--path_batch_shrink', type=int, default=2)
+    parser.add_argument('--d_reg_every', type=int, default=16)
+    parser.add_argument('--g_reg_every', type=int, default=4)
+    parser.add_argument('--mixing', type=float, default=0.9)
+    parser.add_argument('--ckpt', type=str, default=None)
+    parser.add_argument('--lr', type=float, default=0.002)
+    parser.add_argument('--channel_multiplier', type=int, default=2)
+    parser.add_argument('--wandb', action='store_true')
+    parser.add_argument('--local_rank', type=int, default=0)
+    
+    parser.add_argument('--save_ckpt_every', type=int, default=1)
+    parser.add_argument('--save_sample_every', type=int, default=1)
+    parser.add_argument('--name', type=str, default='')
+    
+
+    args = parser.parse_args()
+    
+    setup_and_run(device, args)
+
+    
